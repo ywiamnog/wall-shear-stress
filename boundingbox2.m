@@ -1,55 +1,57 @@
-% % Read in input .stl file
-% output = stlread("testvessel.stl");
-% points = output.Points;
-% connectivity = output.ConnectivityList;
-% 
-% % boolean flags representing if anuli are expected on corresponding face
-% x_min_bool = false;
-% x_max_bool = false;
-% y_min_bool = false;
-% y_max_bool = false;
-% z_min_bool = true;
-% z_max_bool = true;
-% testing = true;
-% 
-% % Compute tolerance
-% [tol, edge_lengths, num_edges] = compute_tol(points, connectivity);
-% 
-% % make neighbors maps
-% triangle_neighbors = maptriangleneighbors(connectivity);
-% points_neighbors = mappointneighbors(points, connectivity);
-% 
-% % Compute bounds and create bounding box;
-% [x_min, x_max, y_min, y_max, z_min, z_max, new_connectivity, new_points] = bounding_box(points, connectivity);
-% bounds = [x_min, x_max, y_min, y_max, z_min, z_max];
-% if (testing)
-%     TR = triangulation(new_connectivity,new_points);
-%     stlwrite(TR,"testvesselwithbox.stl",'text')
-% end
-% 
-% % Compute bins
-% [x_min_bin, x_max_bin, y_min_bin, y_max_bin, z_min_bin, z_max_bin, testing_centroids] ...
-%     = create_bins(bounds, points, connectivity, tol);
-% if (testing)
-%     z_bins = cat(1, z_min_bin, z_max_bin);
-%     stlwrite(triangulation(z_bins, points), "anuli.stl", "text");
-% end
-% 
-% % % Remove anuli to get the rest of the surfaces
-% [removed_anuli_conn] = remove_anuli(connectivity, z_min_bin, z_max_bin);
-% if (testing)
-%     TR = triangulation(removed_anuli_conn,new_points);
-%     stlwrite(TR,"removedanuli.stl",'text')
-% end
-% 
-% % Use flooding algorithm to get other lateral surfaces
-% [inside, ouside] = flood(removed_anuli_conn);
-% if (testing)
-%     TR = triangulation(inside,new_points);
-%     stlwrite(TR,"latsurf1.stl",'text')
-%     TR = triangulation(ouside,new_points);
-%     stlwrite(TR,"latsurf2.stl",'text')
-% end
+% Read in input .stl file
+output = stlread("testvessel.stl");
+points = output.Points;
+connectivity = output.ConnectivityList;
+
+% boolean flags representing if anuli are expected on corresponding face
+x_min_bool = false;
+x_max_bool = false;
+y_min_bool = false;
+y_max_bool = false;
+z_min_bool = true;
+z_max_bool = true;
+testing = true;
+
+% Compute tolerance
+[tol, edge_lengths, num_edges] = compute_tol(points, connectivity);
+
+% make neighbors maps
+triangle_neighbors = maptriangleneighbors(connectivity);
+points_neighbors = mappointneighbors(points, connectivity);
+
+% Compute bounds and create bounding box;
+[x_min, x_max, y_min, y_max, z_min, z_max, new_connectivity, new_points] = bounding_box(points, connectivity);
+bounds = [x_min, x_max, y_min, y_max, z_min, z_max];
+if (testing)
+    TR = triangulation(new_connectivity,new_points);
+    stlwrite(TR,"testvesselwithbox.stl",'text')
+end
+
+% Compute bins
+[x_min_bin, x_max_bin, y_min_bin, y_max_bin, z_min_bin, z_max_bin, testing_centroids] ...
+    = create_bins(bounds, points, connectivity, tol);
+if (testing)
+    z_bins = cat(1, z_min_bin, z_max_bin);
+    stlwrite(triangulation(z_bins, points), "anuli.stl", "text");
+end
+
+% Remove anuli to get the rest of the surfaces
+[removed_anuli_conn, removed_triangles] = remove_anulus(connectivity, z_min_bin);
+[removed_anuli_conn, removed_triangles2] = remove_anulus(removed_anuli_conn, z_max_bin);
+removed_triangles = cat(1, removed_triangles, removed_triangles2);
+if (testing)
+    TR = triangulation(removed_anuli_conn,new_points);
+    stlwrite(TR,"removedanuli.stl",'text')
+end
+
+% Use flooding algorithm to get other lateral surfaces
+[inside, ouside] = flood(removed_anuli_conn);
+if (testing)
+    TR = triangulation(inside,new_points);
+    stlwrite(TR,"latsurf1.stl",'text')
+    TR = triangulation(ouside,new_points);
+    stlwrite(TR,"latsurf2.stl",'text')
+end
 
 % Find rims; the edges on the rim are the edges that are both in a triangle on a
 % latsurf and a triangle in a zbin.
@@ -62,10 +64,15 @@ z_top_in = find_rim(z_max_bin, inside, points);
 [extended_z_min_points, extended_z_min_connectivity] = extend_anulus(z_min_bin, 1.5, -1, z_bot_in, z_bot_out, points_neighbors, points, connectivity); % extending z_min only
 % [extended_z_max_points, extended_z_max_connectivity] = extend_anulus(z_min_bin, 1.5, 1, z_top_in, z_top_out, points_neighbors, points, connectivity); % extending z_max only
 [extended_z_points, extended_z_connectivity] = extend_anulus(z_max_bin, 1.5, 1, z_top_in, z_top_out, points_neighbors, extended_z_min_points, extended_z_min_connectivity); % combining extended z_min and extended z_max
+% remove original anuli
+[extended_z_connectivity, removed_triangles] = remove_anulus(extended_z_connectivity, removed_triangles);
+
 if (testing)
     TR = triangulation(extended_z_connectivity,extended_z_points);
     stlwrite(TR,"z_extended.stl",'text')
 end
+
+
 
 
 %==========================================================================
@@ -280,17 +287,14 @@ end
 
 
 % remove_anuli : removes anuli from the rest of the surfaces
-function [removed_anuli_conn] = remove_anuli(original_connectivity, z_min_bin, z_max_bin)
+function [removed_anuli_conn, removed_triangles] = remove_anulus(original_connectivity, remove_bin)
 % Remove min bin triangles from original connectivity
 removed_anuli_conn = original_connectivity; % make a copy
+removed_triangles = [];
 for orig_elem = 1 : size(original_connectivity, 1) % TODO: very brute force, can it be better?
-    for anuli_elem = 1 : size(z_min_bin)
-        if (sum(removed_anuli_conn(orig_elem, :) ~= z_min_bin(anuli_elem, :)) == 0)
-            removed_anuli_conn(orig_elem, :) = [0, 0, 0]; % Set to be all zeros
-        end
-    end
-    for anuli_elem = 1 : size(z_max_bin)
-        if (sum(removed_anuli_conn(orig_elem, :) ~= z_max_bin(anuli_elem, :)) == 0)
+    for anuli_elem = 1 : size(remove_bin)
+        if (sum(removed_anuli_conn(orig_elem, :) ~= remove_bin(anuli_elem, :)) == 0)
+            removed_triangles = cat(1, removed_triangles, removed_anuli_conn(orig_elem, :));
             removed_anuli_conn(orig_elem, :) = [0, 0, 0]; % Set to be all zeros
         end
     end
@@ -406,7 +410,7 @@ TR = triangulation(anulus_conn,anulus_points(:, 1:3));
 stlwrite(TR,"temp.stl",'text')
 
 % Compute center of vessel
-centroid = sum(anulus_points, 1) / size(anulus_points, 1);
+centroid = sum(anulus_points(:, 1:3), 1) / size(anulus_points, 1);
 
 new_anulus_points = zeros(size(anulus_points, 1), 4);
 % Extend all points on anulus by factor around centroid
@@ -427,6 +431,10 @@ new_connectivity = cat(1, connectivity, anulus_conn);
 
 % Connect points with original points
 % Connect in
+original_centroid = sum(anulus_points(:, 1:3), 1) / size(anulus_points, 1); % centroid of original points on anulus
+new_centroid = sum(new_anulus_points(:, 1:3)) / size(new_anulus_points, 1); % centroid of new points on anulus
+vector_through_centroids = new_centroid - original_centroid; % vector going through the two centroids.
+
 % Base case: nothing added yet, add first triangle.
 numadded = 0;
 in_nbrs = cell(size(points, 1), 1);
@@ -443,7 +451,19 @@ point1 = in(1, 4); % find first element to use.
 point2 = find(new_anulus_points(:, 4)==point1) + size(points, 1);
 point3 = in_nbrs{point1}(1);
 in_added = [point1, point2, point3];
-new_connectivity = cat(1, new_connectivity, [point1, point2, point3]);
+
+% depending on the dot product of vector through centroids and vector to point_centroid, each new triangle is either ccw or cw.
+direction_new_triangle = cross(new_points(point2, 1:3) - new_points(point1, 1:3), new_points(point3, 1:3) - new_points(point1, 1:3));
+norm_vec_new_triangle = direction_new_triangle/norm(direction_new_triangle);
+if (dot(vector_through_centroids, norm_vec_new_triangle) > 0)
+    direction = 1;
+else 
+    direction = 2;
+end
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 point1 = point3;
 % find extended neighbor of point 1
 for i = 1 : size(new_anulus_points)
@@ -453,7 +473,9 @@ for i = 1 : size(new_anulus_points)
         break;
     end
 end
-new_connectivity = [new_connectivity; point1, point2, point3];
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 numadded = numadded + 4;
 % iterative case
 while numadded < size(in, 1) * 2 - 1
@@ -464,8 +486,10 @@ while numadded < size(in, 1) * 2 - 1
         point3 = in_nbrs{point1}(1);
     end
     in_added = [in_added, point3];
-    new_connectivity = [new_connectivity; point1, point2, point3];
-    point1 = point3;
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
+point1 = point3;
     % find extended neighbor of point 1
     for i = 1 : size(new_anulus_points, 1)
         if new_anulus_points(i, 4)==point1
@@ -474,16 +498,21 @@ while numadded < size(in, 1) * 2 - 1
         end
     end
     in_added = [in_added, point3];
-    new_connectivity = [new_connectivity; point1, point2, point3];
-    numadded = numadded + 2;
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
+numadded = numadded + 2;
 end
 point2 = point3;
 point3 = in_added(1);
-new_connectivity = [new_connectivity; point1, point2, point3];
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 point1 = point3;
 point3 = in_added(2);
-new_connectivity = [new_connectivity; point1, point2, point3];
 
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
 
 
 
@@ -505,7 +534,17 @@ point1 = out(1, 4); % find first element to use.
 point2 = find(new_anulus_points(:, 4)==point1) + size(points, 1);
 point3 = out_nbrs{point1}(1);
 out_added = [point1, point2, point3];
-new_connectivity = cat(1, new_connectivity, [point1, point2, point3]);
+% depending on the dot product of vector through centroids and vector to point_centroid, each new triangle is either ccw or cw.
+direction_new_triangle = cross(new_points(point2, 1:3) - new_points(point1, 1:3), new_points(point3, 1:3) - new_points(point1, 1:3));
+norm_vec_new_triangle = direction_new_triangle/norm(direction_new_triangle);
+if (dot(vector_through_centroids, norm_vec_new_triangle) > 0)
+    direction = 2;
+else 
+    direction = 1;
+end
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 point1 = point3;
 % find extended neighbor of point 1
 for i = 1 : size(new_anulus_points)
@@ -515,7 +554,10 @@ for i = 1 : size(new_anulus_points)
         break;
     end
 end
-new_connectivity = [new_connectivity; point1, point2, point3];
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 numadded = numadded + 4;
 % iterative case
 while numadded < size(out, 1) * 2 - 1
@@ -526,8 +568,11 @@ while numadded < size(out, 1) * 2 - 1
         point3 = out_nbrs{point1}(1);
     end
     out_added = [out_added, point3];
-    new_connectivity = [new_connectivity; point1, point2, point3];
-    point1 = point3;
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
+point1 = point3;
     % find extended neighbor of point 1
     for i = 1 : size(new_anulus_points, 1)
         if new_anulus_points(i, 4)==point1
@@ -536,17 +581,40 @@ while numadded < size(out, 1) * 2 - 1
         end
     end
     out_added = [out_added, point3];
-    new_connectivity = [new_connectivity; point1, point2, point3];
-    numadded = numadded + 2;
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
+numadded = numadded + 2;
 end
 point2 = point3;
 point3 = out_added(1);
-new_connectivity = [new_connectivity; point1, point2, point3];
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 point1 = point3;
 point3 = out_added(2);
-new_connectivity = [new_connectivity; point1, point2, point3];
+
+% new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
+new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
 end
 
+
+function [connectivity] = concat_triangle(connectivity, point1, point2, point3, direction)
+% Concatenates one triangle of three points to connectivity in a direction
+% that ensures the right normal vector direction.
+% Inputs:
+%   - connectivity: as expected
+%   - point1, point2, point3: the three points we add to the connectivity list.
+%   - direction: 1 if points go clockwise, 2 if points go counter-clockwise.
+if (direction == 1)
+    connectivity = [connectivity; point1, point2, point3];
+else
+    connectivity = [connectivity; point1, point3, point2];
+end
+end
 
 function [max_diameter] = find_diameter(bin)
 % Helper function: Given a set of points in the bin, finds the max diameter.
