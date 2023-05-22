@@ -1,4 +1,4 @@
-% Requires:
+% Requires:.
 %   - Input .stl file is composed of approximately evenly distributed
 %   triangles with no "holes".
 %   - The anuli of the input .stl file are flat along the x, y, and z
