@@ -1,96 +1,102 @@
-% % Requires:
-% %   - Input .stl file is composed of approximately evenly distributed
-% %   triangles with no "holes".
-% %   - The anuli of the input .stl file are flat along the x, y, and z
-% %   planes.
-% %   - That is, it should be a safe assumption that all points on the anuli
-% %   are within 0.1*(median edge length) of the boundary value.
-% 
-% % compute_all_extensions("xyztest.stl", 1, 1, 1, 1, 1, 1);
-% 
-% % function compute_all_extensions(filename, num_x_pos, num_x_neg, num_y_pos, num_y_neg, num_z_pos, num_z_neg)
-% % Computes and adds all extensions to input .stl file.
-% % Inputs:
-% %   - filename: a string, the name of the .stl file we are reading
-% %   - num_x_pos: an integer, the number of extensions expected on the x
-% %     axis in the positive direction
-% %   - num_x_neg: an integer, the number of extensions expected on the x
-% %     axis in the negative direction.
-% %   - other inputs: similar to num_x_pos/neg.
-% 
-% %% Setup
-% % Read in input .stl file.
-% input = stlread("ztest.stl");
-% original_points = input.Points;
-% original_connectivity = input.ConnectivityList;
-% 
-% % ------------------------REMOVE---------------
-% num_x_pos = 0;
-% num_x_neg = 0;
+% Requires:
+%   - Input .stl file is composed of approximately evenly distributed
+%   triangles with no "holes".
+%   - The anuli of the input .stl file are flat along the x, y, and z
+%   planes.
+%   - That is, it should be a safe assumption that all points on the anuli
+%   are within 0.1*(median edge length) of the boundary value.
+
+compute_all_extensions("xtest.stl", 1, 1, 0, 0, 0, 0);
+compute_all_extensions("ytest.stl", 0, 0, 1, 1, 0, 0);
+compute_all_extensions("ztest.stl", 0, 0, 0, 0, 1, 1);
+
+function compute_all_extensions(filename, num_x_pos, num_x_neg, num_y_pos, num_y_neg, num_z_pos, num_z_neg)
+% Computes and adds all extensions to input .stl file.
+% Inputs:
+%   - filename: a string, the name of the .stl file we are reading
+%   - num_x_pos: an integer, the number of extensions expected on the x
+%     axis in the positive direction
+%   - num_x_neg: an integer, the number of extensions expected on the x
+%     axis in the negative direction.
+%   - other inputs: similar to num_x_pos/neg.
+
+%% Setup
+% Read in input .stl file.
+input = stlread(filename);
+original_points = input.Points;
+original_connectivity = input.ConnectivityList;
+
+% ------------------------REMOVE---------------
+% num_x_pos = 1;
+% num_x_neg = 1;
 % num_y_pos = 0;
 % num_y_neg = 0;
-% num_z_pos = 1;
-% num_z_neg = 1;
-% %------------------------------------------------
-% 
-% % Compute preliminary triangle neighbors (triangles that share an edge).
-% triangle_neighbors = map_triangle_neighbors(original_connectivity);
-% % Compute preliminary point neighbors (points that share an edge).
-% point_neighbors = map_point_neighbors(original_points, original_connectivity);
-% 
-% % Compute tolerance
-% tol = compute_tol(original_points, original_connectivity);
-% 
-% % Find bounds of vessel.
-% [x_min, x_max, y_min, y_max, z_min, z_max] = find_bounds(original_points, original_connectivity);
-% 
-% % Find all triangles whose centroid are within tolerance of x/y/z_min/max.
-% % These bins are of the form [x, y, z, connectivity_idx].
-% [x_min_bin, x_max_bin, y_min_bin, y_max_bin, z_min_bin, z_max_bin] = compute_bins(tol, x_min, x_max, y_min, y_max, z_min, z_max, original_points, original_connectivity); % DEBUG: nothing in y_max+bin, y_min_bin, z_max_bin.
-% 
-% % Find and remove all anuli from the vessel.
-% temp_connectivity = original_connectivity;
-% if (num_x_neg > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, x_min_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% if (num_x_pos > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, x_max_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% if (num_y_neg > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, y_min_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% if (num_y_pos > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, y_max_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% if (num_z_neg > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, z_min_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% if (num_z_pos > 0)
-%     removed_anuli_conn = remove_anulus(temp_connectivity, z_max_bin);
-%     temp_connectivity = removed_anuli_conn;
-% end
-% removed_anuli_conn = temp_connectivity;
-% % Remove all zero rows.
-% removed_anuli_conn( ~any(removed_anuli_conn,2), : ) = [];
-% TRtesting = triangulation(removed_anuli_conn, original_points);
-% stlwrite(TRtesting, "sanitycheck2.stl", 'text');
-% 
-% % Use flooding algorithm to get other lateral surfaces.
-% [inside, outside] = flood_lateral(removed_anuli_conn);
+% num_z_pos = 0;
+% num_z_neg = 0;
+%------------------------------------------------
+
+% Compute preliminary triangle neighbors (triangles that share an edge).
+triangle_neighbors = map_triangle_neighbors(original_connectivity);
+% Compute preliminary point neighbors (points that share an edge).
+point_neighbors = map_point_neighbors(original_points, original_connectivity);
+
+% Compute tolerance
+tol = compute_tol(original_points, original_connectivity);
+
+% Find bounds of vessel.
+[x_min, x_max, y_min, y_max, z_min, z_max] = find_bounds(original_points, original_connectivity);
+
+% Find all triangles whose centroid are within tolerance of x/y/z_min/max.
+% These bins are of the form [x, y, z, connectivity_idx].
+[x_min_bin, x_max_bin, y_min_bin, y_max_bin, z_min_bin, z_max_bin] = compute_bins(tol, x_min, x_max, y_min, y_max, z_min, z_max, original_points, original_connectivity); % DEBUG: nothing in y_max+bin, y_min_bin, z_max_bin.
+
+% Find and remove all anuli from the vessel.
+temp_connectivity = original_connectivity;
+if (num_x_neg > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, x_min_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+if (num_x_pos > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, x_max_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+if (num_y_neg > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, y_min_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+if (num_y_pos > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, y_max_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+if (num_z_neg > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, z_min_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+if (num_z_pos > 0)
+    removed_anuli_conn = remove_anulus(temp_connectivity, z_max_bin);
+    temp_connectivity = removed_anuli_conn;
+end
+removed_anuli_conn = temp_connectivity;
+% Remove all zero rows.
+removed_anuli_conn( ~any(removed_anuli_conn,2), : ) = [];
+TRtesting = triangulation(removed_anuli_conn, original_points);
+stlwrite(TRtesting, "sanitycheck2.stl", 'text');
+
+% Use flooding algorithm to get other lateral surfaces.
+[inside, outside] = flood_lateral(removed_anuli_conn);
+TR = triangulation(inside,original_points);
+stlwrite(TR,"latsurf1.stl",'text')
+TR = triangulation(outside,original_points);
+stlwrite(TR,"latsurf2.stl",'text')
 
 % Separate the anuli on each face from each other.
 % These anuli are stored in cell arrays of size num_anuli, where each cell
 % contains all the triangles in that anulus.
 
-% x_max_anuli_cell = separate_anuli(x_max_bin, num_x_pos);
-% x_min_anuli_cell = separate_anuli(x_min_bin, num_x_neg);
-% y_max_anuli_cell = separate_anuli(y_max_bin, num_y_pos);
-% y_min_anuli_cell = separate_anuli(y_min_bin, num_y_neg);
+x_max_anuli_cell = separate_anuli(x_max_bin, num_x_pos);
+x_min_anuli_cell = separate_anuli(x_min_bin, num_x_neg);
+y_max_anuli_cell = separate_anuli(y_max_bin, num_y_pos);
+y_min_anuli_cell = separate_anuli(y_min_bin, num_y_neg);
 z_max_anuli_cell = separate_anuli(z_max_bin, num_z_pos);
 z_min_anuli_cell = separate_anuli(z_min_bin, num_z_neg);
 
@@ -98,45 +104,46 @@ z_min_anuli_cell = separate_anuli(z_min_bin, num_z_neg);
 new_points = original_points;
 new_connectivity = original_connectivity;
 
-% %% X positive axis:
-% for i = 1 : num_x_pos % For each anulus,
-%     anulus = x_max_anuli_cell{i};
-%     % Determine points on the rim and store them in a bucket.
-%     out_rim = find_rim(anulus, outside, original_points);
-%     in_rim = find_rim(anulus, inside, original_points);
-%     % Extend the anulus outwards
-%     [new_points, new_connectivity] = extend_anulus(1, anulus, 1.5, 1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
-% end
+%% X positive axis:
+for i = 1 : num_x_pos % For each anulus,
+    anulus = x_max_anuli_cell{i};
+    % Determine points on the rim and store them in a bucket.
+    out_rim = find_rim(anulus, outside, original_points);
+    in_rim = find_rim(anulus, inside, original_points);
+    % Extend the anulus outwards
+    % FIX: This one looks weird. Possibly out_rim incorrect?
+    [new_points, new_connectivity] = extend_anulus(1, anulus, 1.5, 1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
+end
 
-% %% X negative axis:
-% for i = 1 : num_x_neg % For each anulus,
-%     anulus = x_min_anuli_cell{i};
-%     % Determine points on the rim and store them in a bucket.
-%     out_rim = find_rim(anulus, outside, original_points);
-%     in_rim = find_rim(anulus, inside, original_points);
-%     % Extend the anulus outwards
-%     [new_points, new_connectivity] = extend_anulus(1, anulus, 1.5, -1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
-% end
-% 
-% %% Y positive axis:
-% for i = 1 : num_y_pos % For each anulus,
-%     anulus = y_max_anuli_cell{i};
-%     % Determine points on the rim and store them in a bucket.
-%     out_rim = find_rim(anulus, outside, original_points);
-%     in_rim = find_rim(anulus, inside, original_points);
-%     % Extend the anulus outwards
-%     [new_points, new_connectivity] = extend_anulus(2, anulus, 1.5, 1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
-% end
-% 
-% %% Y negative axis:
-% for i = 1 : num_y_neg % For each anulus,
-%     anulus = y_min_anuli_cell{i};
-%     % Determine points on the rim and store them in a bucket.
-%     out_rim = find_rim(anulus, outside, original_points);
-%     in_rim = find_rim(anulus, inside, original_points);
-%     % Extend the anulus outwards
-%     [new_points, new_connectivity] = extend_anulus(2, anulus, 1.5, -1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
-% end
+%% X negative axis:
+for i = 1 : num_x_neg % For each anulus,
+    anulus = x_min_anuli_cell{i};
+    % Determine points on the rim and store them in a bucket.
+    out_rim = find_rim(anulus, outside, original_points);
+    in_rim = find_rim(anulus, inside, original_points);
+    % Extend the anulus outwards
+    [new_points, new_connectivity] = extend_anulus(1, anulus, 1.5, -1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
+end
+
+%% Y positive axis:
+for i = 1 : num_y_pos % For each anulus,
+    anulus = y_max_anuli_cell{i};
+    % Determine points on the rim and store them in a bucket.
+    out_rim = find_rim(anulus, outside, original_points);
+    in_rim = find_rim(anulus, inside, original_points);
+    % Extend the anulus outwards
+    [new_points, new_connectivity] = extend_anulus(2, anulus, 1.5, 1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
+end
+
+%% Y negative axis:
+for i = 1 : num_y_neg % For each anulus,
+    anulus = y_min_anuli_cell{i};
+    % Determine points on the rim and store them in a bucket.
+    out_rim = find_rim(anulus, outside, original_points);
+    in_rim = find_rim(anulus, inside, original_points);
+    % Extend the anulus outwards
+    [new_points, new_connectivity] = extend_anulus(2, anulus, 1.5, -1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
+end
 
 %% Z positive axis:
 for i = 1 : num_z_pos % For each anulus,
@@ -157,6 +164,27 @@ for i = 1 : num_z_neg % For each anulus,
     % Extend the anulus outwards
     [new_points, new_connectivity] = extend_anulus(3, anulus, 1.5, -1, in_rim, out_rim, point_neighbors, new_points, new_connectivity);
 end
+
+% Remove original anuli.
+if (num_x_pos > 0)
+new_connectivity = remove_anulus(new_connectivity, x_max_bin);
+end
+if (num_x_neg > 0)
+new_connectivity = remove_anulus(new_connectivity, x_min_bin);
+end
+if (num_y_pos > 0)
+new_connectivity = remove_anulus(new_connectivity, y_max_bin);
+end
+if (num_y_neg > 0)
+new_connectivity = remove_anulus(new_connectivity, y_min_bin);
+end
+if (num_z_pos > 0)
+new_connectivity = remove_anulus(new_connectivity, z_max_bin);
+end
+if (num_z_neg > 0)
+new_connectivity = remove_anulus(new_connectivity, z_min_bin);
+end
+new_connectivity( ~any(new_connectivity,2), : ) = [];
 
 %% Write output.
 TR = triangulation(new_connectivity, new_points);
@@ -186,39 +214,10 @@ stlwrite(TR, "xyzoutput.stl", 'text')
 % all_rim_points = cat(1, all_rim_points, find_rim());
 
 % Split each bin into individual rims, stored in cells.
-x_min_rims_out_cells = separate_rims(x_min_rims_out, point_neighbors);
+% x_min_rims_out_cells = separate_rims(x_min_rims_out, point_neighbors);
 
 % Extend each anulus outwards.
-
-
-%% Extend in the positive x direction.
-for num = 1 : num_x_pos
-    % TODO: try to do a try-catch here to catch wrong input number of
-    % extensions errors??
 end
-
-%% Extend in the negative x direction.
-for num = 1 : num_x_neg
-end
-
-%% Extend in the positive y direction.
-for num = 1 : num_y_pos
-end
-
-%% Extend in the negative y direction.
-for num = 1 : num_y_neg
-end
-
-%% Extend in the positive z direction.
-for num = 1 : num_z_pos
-end
-
-%% Extend in the negative z direction.
-for num = 1 : num_z_neg
-end
-
-% end
-
 
 
 
@@ -362,7 +361,7 @@ for i = 1 : size(connectivity, 1)
     num_edges = num_edges + 1;
     edge_lengths(num_edges) = abs(norm(points(p2, :) - points(p3, :)));
 end
-tol = 0.1 * median(edge_lengths);
+tol = 0.15 * median(edge_lengths);
 end
 
 
@@ -679,13 +678,14 @@ new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, dir
 
 point1 = point3;
 % find extended neighbor of point 1
-for i = 1 : size(new_anulus_points)
-    if new_anulus_points(i, 4)==point1
-        point3 = i + size(orig_points, 1);
-        in_added = cat(2, in_added, point3);
-        break;
-    end
-end
+point3 = find(new_anulus_points(:, 4)==point1) + size(orig_points, 1);
+% for i = 1 : size(new_anulus_points)
+%     if new_anulus_points(i, 4)==point1
+%         point3 = i + size(orig_points, 1);
+%         in_added = cat(2, in_added, point3);
+%         break;
+%     end
+% end
 % new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
 new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
 
@@ -726,6 +726,11 @@ point3 = in_added(2);
 
 % new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
 new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
+
+TR = triangulation(new_connectivity, new_points);
+stlwrite(TR, "xyzoutput1.stl", 'text')
+
+
 
 % connect out
 % Base case: nothing added yet, add first triangle.
@@ -809,6 +814,8 @@ point3 = out_added(2);
 % new_connectivity = cat(1, new_connectivity, [point1, point3, point2]);
 new_connectivity = concat_triangle(new_connectivity, point1, point2, point3, direction);
 
+TR = triangulation(new_connectivity, new_points);
+stlwrite(TR, "xyzoutput2.stl", 'text')
 
 end
 
